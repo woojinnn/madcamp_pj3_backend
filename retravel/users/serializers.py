@@ -1,34 +1,30 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import Profile
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username')
+        fields = ('id', 'username', 'nickname', 'detail')
 
-class ProfileSerializer(serializers.ModelSerializer):
+
+
+class CreateUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Profile
-        fields = ('id', 'user_pk', 'userId', 'detail')
+        model = User
+        fields = ("id", "username", "nickname", "password")
+        extra_kwargs = {"password": {"write_only": True}}
 
-
-class CreateUserSerializer(serializers.Serializer):
-    username = serializers.CharField()
-    userId = serializers.CharField()
-    password = serializers.CharField()
     def create(self, validated_data):
         user = User.objects.create_user(
-            username = validated_data['username'],
-            password = validated_data['password']
+            username = validated_data["username"],
+            nickname = validated_data["nickname"],
+            password = validated_data["password"]
         )
-        profile = Profile(user = user,
-                            user_pk = user.id,
-                            userId = validated_data['userId'])
-        profile.save()
-        return (user, profile)
+        user.save()
+        return user
 
 
 class LoginSerializer(serializers.Serializer):
@@ -36,7 +32,7 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, data):
-        user = authenticate(**data)
+        user = authenticate(username = data["username"], password = data["password"])
         if user and user.is_active:
             return user
         raise serializers.ValidationError("Incorrect Credentials")

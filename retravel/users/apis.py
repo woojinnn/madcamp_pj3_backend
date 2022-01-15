@@ -7,9 +7,7 @@ from knox.views import LoginView as KnoxLoginView
 
 from django.contrib.auth import login
 
-from .serializers import ProfileSerializer, UserSerializer, CreateUserSerializer, LoginSerializer
-from .models import Profile
-
+from .serializers import UserSerializer, CreateUserSerializer, LoginSerializer
 # Remember apis.py works just like views.py (shows the content and manages the functionality)
 # Creation of Token (with every new user registration a new token will be generated)
 
@@ -32,12 +30,11 @@ class RegisterAPI(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        (user, profile) = serializer.save()
+        user = serializer.save()
         _, token = AuthToken.objects.create(user)
 
         return Response({
             "user": UserSerializer(user, context=self.get_serializer_context()).data,
-            "profile": ProfileSerializer(profile, context=self.get_serializer_context()).data,
             "token": token
         })
 
@@ -57,10 +54,3 @@ class LoginAPI(generics.GenericAPIView):
             "user": UserSerializer(user, context=self.get_serializer_context()).data,
             "token": token
         })
-
-
-# Update Profile class
-class ProfileUpdateAPI(generics.UpdateAPIView):
-    lookup_field = "user_pk"
-    queryset = Profile.objects.all()
-    serializer_class = ProfileSerializerf
