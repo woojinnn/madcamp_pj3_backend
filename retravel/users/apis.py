@@ -8,10 +8,7 @@ from knox.views import LoginView as KnoxLoginView
 from django.contrib.auth import login
 
 from .serializers import UserSerializer, CreateUserSerializer, LoginSerializer
-# Remember apis.py works just like views.py (shows the content and manages the functionality)
 # Creation of Token (with every new user registration a new token will be generated)
-
-# Register API Page
 
 # Get User API
 class UserAPI(generics.RetrieveAPIView):
@@ -41,13 +38,15 @@ class RegisterAPI(generics.GenericAPIView):
 
 
 # Login API
-class LoginAPI(generics.GenericAPIView):
+class LoginAPI(generics.GenericAPIView, KnoxLoginView):
     serializer_class = LoginSerializer
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data
+        login(request, user)
         _, token = AuthToken.objects.create(user)
 
         return Response({
