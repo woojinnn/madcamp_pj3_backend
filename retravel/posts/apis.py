@@ -145,5 +145,7 @@ class PostDetail(APIView):
         else:
             post_id = kwargs.get('post_id')
             post_object = Post.objects.get(id=post_id)
+            if post_object.image:
+                post_object.image.delete()
             post_object.delete()
             return Response("test ok", status=status.HTTP_200_OK)

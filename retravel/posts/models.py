@@ -25,7 +25,7 @@ class Post(models.Model):
     place = models.TextField()
     latitude = models.FloatField()
     longitude = models.FloatField()
-    # image = models.ImageField()/
+    image = models.ImageField(upload_to = 'post_imgs', blank=True, null=True)
 
     def __str__(self):
         return self.title
