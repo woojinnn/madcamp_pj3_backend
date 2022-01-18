@@ -5,15 +5,14 @@ from rest_framework.decorators import permission_classes, authentication_classes
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from .serializers import PostListSerializer, PostCreateSerializer, PostSerializer, PostUpdateSerializer
+from .serializers import CreatePostSerializer, PostListSerializer, PostSerializer
 from .models import Post
 
+from django.db.models import Count
 from django.contrib.auth import get_user_model
 
 
 User = get_user_model()
-
-# View For List All Published Posts
 
 
 @permission_classes((IsAuthenticated,))
@@ -22,14 +21,16 @@ User = get_user_model()
 def your_functional_view(request):
     return Response(status=status.HTTP_200_OK)
 
-
+# Login not required
+# Show all posts
 class PostListView(generics.ListAPIView):
     queryset = Post.objects.all()
     serializer_class = PostListSerializer
-    lookup_field = 'slug'
+    lookup_field = 'contents'
 
 
 # Create Post
+# Login required
 @permission_classes((IsAuthenticated,))
 @authentication_classes([TokenAuthentication])
 @api_view(['POST'])
@@ -37,88 +38,174 @@ def create_post(request):
     if request.method == 'POST':
         user = request.user
 
-        data = request.data
+        print(request.data)
+        request.data._mutable=True
+        data = request.data.copy()
         data['author'] = user.pk  # Adding User ID Of The Author
-        serializer = PostCreateSerializer(data=data)
+        serializer = CreatePostSerializer(data=data)
 
         if serializer.is_valid():
+            print("VALID")
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
+            print("INVALID")
+            print(serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     else:
         return Response({'detail': 'Something Went Wrong'}, status=status.HTTP_400_BAD_REQUEST)
 
-
-
-# View To Update A Post For Logged In Users
+# increment like
 @permission_classes((IsAuthenticated,))
 @authentication_classes([TokenAuthentication])
 @api_view(['POST'])
-def post_update_view(request):
+def post_like(request, **kwargs):
     if request.method == 'POST':
+        if kwargs.get('post_id') is None:
+            return Response("invalid request", status=status.HTTP_400_BAD_REQUEST)
 
-        logged_in_user = request.user
+        user = request.user
 
-        updated_data = request.data
-        instance = Post.objects.get(slug=updated_data.get('slug'))
-        admin_user = User.objects.get(pk=1)  # PK Of Admin User Is 1
+        post_id = kwargs.get('post_id')
+        post_object = Post.objects.get(id=post_id)
+        if(post_object == None):
+            return Response("no such post")
 
-        if(instance.author == logged_in_user or logged_in_user == admin_user):
-            updated_data.pop('slug')
-            serializer = PostUpdateSerializer(instance, data=updated_data)
+        if (user not in post_object.like_users.all()):
+            post_object.like_users.add(user)
 
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
-            else:
-                return Response({'detail': 'Something Went Wrong.'}, status=status.HTTP_400_BAD_REQUEST)
+        post_object.save()
 
-        else:
-            return Response({'detail': 'You Are Not Authorised To Edit This Post'}, status.HTTP_403_FORBIDDEN)
+        return Response({
+            "updated": PostSerializer(post_object).data
+        })
 
     else:
         return Response({'detail': 'You Are Not Authorised To Edit This Post'}, status.HTTP_403_FORBIDDEN)
 
-# View To Delete A Post For Logged In Users
+
+# decrement like
 @permission_classes((IsAuthenticated,))
 @authentication_classes([TokenAuthentication])
-@api_view(['DELETE'])
-def post_delete_view(request):
-    if request.method == 'DELETE':
-        logged_in_user = request.user
+@api_view(['POST'])
+def post_unlike(request, **kwargs):
+    if request.method == 'POST':
+        if kwargs.get('post_id') is None:
+            return Response("invalid request", status=status.HTTP_400_BAD_REQUEST)
 
-        print(request.data)
+        user = request.user
+        print(user)
 
-        instance = Post.objects.get(slug=request.data.get('slug'))
-        admin_user = User.objects.get(pk=1)  # PK Of Admin User Is 1
+        post_id = kwargs.get('post_id')
+        post_object = Post.objects.get(id=post_id)
+        if(post_object == None):
+            return Response("no such post")
+        
+        if(user in post_object.like_users.all()):
+            post_object.like_users.remove(user)
+        post_object.save()
 
-        if(instance.author == logged_in_user or logged_in_user == admin_user):
-            instance.delete()
-            return Response({}, status=status.HTTP_200_OK)
-        else:
-            return Response({'detail': 'Something Went Wrong.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "updated": PostSerializer(post_object).data
+        })
 
     else:
         return Response({'detail': 'You Are Not Authorised To Edit This Post'}, status.HTTP_403_FORBIDDEN)
 
+# get user's posts
+@permission_classes((IsAuthenticated,))
+@authentication_classes([TokenAuthentication])
+@api_view(['GET'])
+def get_user_post_with_city(request, **kwargs):
+    if request.method == 'GET':
+        if kwargs['city'] is None:
+            return Response("invalid request", status=status.HTTP_400_BAD_REQUEST)
 
-class PostDetail(APIView):
-    @permission_classes((IsAuthenticated,))
-    @authentication_classes([TokenAuthentication])
-    def get(self, request, **kwargs):
-        if kwargs.get('post_id') is None:
-            user = User.objects.get(username = request.user)
-            post_queryset = Post.objects.get(author = user)
-            post_queryset_serializer = PostSerializer(post_queryset)
-            return Response(post_queryset_serializer.data, status=status.HTTP_200_OK)
         else:
-            post_id = kwargs.get('post_id')
-            post_serializer = PostSerializer(Post.objects.get(id=post_id))
-            return Response(post_serializer.data, status=status.HTTP_200_OK)
+            user = User.objects.get(username = request.user)
+            city = kwargs['city']
+            post_queryset = Post.objects.filter(author = user, city = city)
+            post_queryset_serializer = PostSerializer(post_queryset, many=True)
+            return Response(post_queryset_serializer.data, status=status.HTTP_200_OK)
+    else:
+        return Response({'This method is not allowed'}, status.HTTP_400_BAD_REQUEST)
 
 
+@permission_classes((IsAuthenticated,))
+@authentication_classes([TokenAuthentication])
+@api_view(['GET'])
+def get_user_post_without_city(request, **kwargs):
+    if request.method == 'GET':
+        user = User.objects.get(username = request.user)
+        post_queryset = Post.objects.filter(author = user)
+        post_queryset_serializer = PostSerializer(post_queryset, many=True)
+        return Response(post_queryset_serializer.data, status=status.HTTP_200_OK)
+    else:
+        return Response({'This method is not allowed'}, status.HTTP_400_BAD_REQUEST)
+
+
+@permission_classes((IsAuthenticated,))
+@authentication_classes([TokenAuthentication])
+@api_view(['GET'])
+def get_user_traveld_cities(request, **kwargs):
+    if request.method == 'GET':
+        city_list = []
+        user = User.objects.get(username = request.user)
+        post_queryset = Post.objects.filter(author = user)
+        for post in post_queryset:
+            if(post.city not in city_list):
+                city_list.append(post.city)
+        return Response(city_list, status=status.HTTP_200_OK)
+    else:
+        return Response({'This method is not allowed'}, status.HTTP_400_BAD_REQUEST)
+
+# Top like posts
+@api_view(['GET'])
+def get_top_like_posts(request):
+    if request.method == 'GET':
+        post_queryset = Post.objects.all().annotate(like_cnt=Count('like_users')).order_by('-like_cnt')
+        post_queryset_serializer = PostSerializer(post_queryset, many=True)
+        return Response(post_queryset_serializer.data, status=status.HTTP_200_OK)
+    else:
+        return Response({'This method is not allowed'}, status.HTTP_400_BAD_REQUEST)
+
+
+# Top Liked Cities
+@api_view(['GET'])
+def get_top_like_cities(request):
+    if request.method == 'GET':
+        city_list = {}
+        post_queryset = Post.objects.all().annotate(like_cnt=Count('like_users')).order_by('-like_cnt')
+        print(post_queryset)
+        for post in post_queryset:
+            print(post.like_users.count())
+            if post.city not in city_list:
+                city_list[post.city] = post.like_users.count()
+            else:
+                city_list[post.city] += post.like_users.count()
+        sorted_cities = sorted(city_list.items(), key=lambda x:x[1], reverse=True)
+        print(type(sorted_cities))
+        return Response(sorted_cities, status=status.HTTP_200_OK)
+    else:
+        return Response({'This method is not allowed'}, status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+def get_city_posts(request, **kwargs):
+    if request.method == 'GET':
+        if kwargs['city'] is None:
+            return Response("invalid request", status=status.HTTP_400_BAD_REQUEST)
+
+        city = kwargs['city']
+        post_queryset = Post.objects.filter(city = city)
+        post_queryset_serializer = PostSerializer(post_queryset, many=True)
+        return Response(post_queryset_serializer.data, status=status.HTTP_200_OK)
+
+    else:
+        return Response({'This method is not allowed'}, status.HTTP_400_BAD_REQUEST)
+
+
+class PostModification(APIView):
     @permission_classes((IsAuthenticated,))
     @authentication_classes([TokenAuthentication])
     def put(self, request, **kwargs):
@@ -126,10 +213,15 @@ class PostDetail(APIView):
             return Response("invalid request", status=status.HTTP_400_BAD_REQUEST)
 
         else:
+            user = User.objects.get(username = request.user)
             post_id = kwargs.get('post_id')
             post_object = Post.objects.get(id=post_id)
+            if(post_object.author != user):
+                return Response("author doesn't match")
 
-            update_post_serializer = PostSerializer(post_object, data=request.data)
+            update_data = request.data
+            update_data['author'] = user.pk
+            update_post_serializer = PostSerializer(post_object, data=update_data)
             if update_post_serializer.is_valid():
                 update_post_serializer.save()
                 return Response(update_post_serializer.data, status=status.HTTP_200_OK)
@@ -143,8 +235,15 @@ class PostDetail(APIView):
             return Response("invalid request", status=status.HTTP_400_BAD_REQUEST)
 
         else:
+            user = User.objects.get(username = request.user)
             post_id = kwargs.get('post_id')
             post_object = Post.objects.get(id=post_id)
+            
+            # Check author
+            if(post_object.author != user):
+                return Response("author doesn't match")
+
+            # Delete related image
             if post_object.image:
                 post_object.image.delete()
             post_object.delete()
