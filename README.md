@@ -1,5 +1,5 @@
 # madcamp_pj3_backend
-Submodule for [madcamp_pj3](TODO). Responsible for backend stuffs.
+Submodule for [madcamp_pj3](https://github.com/woojinnn/retravel). Responsible for backend stuffs.
 
 ---
 ## Development Envrionment
